@@ -193,6 +193,7 @@ func TestClientProduceAndConsume(t *testing.T) {
 	seed := int64(0) // deterministic
 	prng := rand.New(rand.NewSource(seed))
 	offset := int64(0)
+	initialized := false
 
 	const numBatches = 100
 	const recordsPerBatch = 320
@@ -221,6 +222,10 @@ func TestClientProduceAndConsume(t *testing.T) {
 		if res.Error != nil {
 			t.Fatal(res.Error)
 		}
+		if !initialized {
+			offset = res.BaseOffset
+			initialized = true
+		}
 		if res.BaseOffset != offset {
 			t.Fatalf("records were produced at an unexpected offset, want %d but got %d", offset, res.BaseOffset)
 		}
@@ -228,7 +233,8 @@ func TestClientProduceAndConsume(t *testing.T) {
 	}
 
 	prng.Seed(seed)
-	offset = 0 // reset
+	offset = 0          // reset
+	initialized = false // reset
 	numFetches := 0
 	numRecords := 0
 
@@ -275,6 +281,11 @@ func TestClientProduceAndConsume(t *testing.T) {
 
 			if !bytes.Equal(a, b) {
 				t.Fatalf("value of record at offset %d mismatches", r.Offset)
+			}
+
+			if !initialized {
+				offset = r.Offset
+				initialized = true
 			}
 
 			if r.Offset != offset {
