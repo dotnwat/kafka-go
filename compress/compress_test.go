@@ -232,8 +232,11 @@ func TestMixedCompressedMessages(t *testing.T) {
 		for i := range msgs {
 			value := fmt.Sprintf("Hello World %d!", offset)
 			values = append(values, value)
+			msgs[i] = kafka.Message{
+				Key:   []byte(strconv.Itoa(offset)),
+				Value: []byte(value),
+			}
 			offset++
-			msgs[i] = kafka.Message{Value: []byte(value)}
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -266,17 +269,40 @@ func TestMixedCompressedMessages(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// find the offset of the first record that we wrote above. this might
+	// not be zero if a control batch exists at the beginning of the log.
+	// note that this bootstrap logic should continue to function correctly
+	// even when support lands for skipping control batches.
+	var startOffset int64
+	r.SetOffset(int64(0))
+	for {
+		msg, err := r.ReadMessage(ctx)
+		if err != nil {
+			t.Fatalf("error receiving message reason: %+v", err)
+		}
+		if msg.Key == nil || len(msg.Key) == 0 {
+			continue
+		}
+		if string(msg.Key) == strconv.Itoa(0) {
+			startOffset = msg.Offset
+			break
+		}
+	}
+
 	// in order to ensure proper handling of decompressing message, read at
 	// offsets that we know to be in the middle of compressed message sets.
 	for base := range values {
-		r.SetOffset(int64(base))
+		r.SetOffset(int64(base) + startOffset)
 		for i := base; i < len(values); i++ {
 			msg, err := r.ReadMessage(ctx)
 			if err != nil {
 				t.Errorf("error receiving message at loop %d, offset %d, reason: %+v", base, i, err)
 			}
-			if msg.Offset != int64(i) {
+			if msg.Offset != int64(i)+startOffset {
 				t.Errorf("wrong offset at loop %d...expected %d but got %d", base, i, msg.Offset)
+			}
+			if strconv.Itoa(i) != string(msg.Key) {
+				t.Fatalf("wrong message key at loop %d...expected %d but got %s", base, i, string(msg.Key))
 			}
 			if values[i] != string(msg.Value) {
 				t.Errorf("wrong message value at loop %d...expected %s but got %s", base, values[i], string(msg.Value))
