@@ -68,7 +68,7 @@ func clientCreateTopic(client *Client, topic string, partitions int) error {
 }
 
 func newLocalClient() (*Client, func()) {
-	return newClient(TCP("localhost"))
+	return newClient(TCP("127.0.0.1"))
 }
 
 func newClient(addr net.Addr) (*Client, func()) {
